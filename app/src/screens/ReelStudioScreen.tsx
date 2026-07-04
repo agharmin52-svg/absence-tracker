@@ -13,8 +13,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile } from '@ffmpeg/util';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
@@ -193,7 +191,6 @@ export function ReelStudioScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  const ffmpegRef = useRef<FFmpeg | null>(null);
   const { addVideo } = useVideoLibrary();
   const { saveReel } = useReelStudio();
 
@@ -418,55 +415,16 @@ export function ReelStudioScreen() {
     try {
       setIsExporting(true);
       setExportUrl('');
-      console.log('🎬 شروع ساخت ویدیو...');
-      
-      const ffmpeg = new FFmpeg();
-      ffmpegRef.current = ffmpeg;
-      
-      // ✅ استفاده مستقیم از origin برای FFmpeg (بدون toBlobURL)
-      let coreURL: string;
-      let wasmURL: string;
-      
-      if (typeof window !== 'undefined') {
-        const baseURL = window.location.origin;
-        
-        coreURL = `${baseURL}/ffmpeg-core.js`;
-        wasmURL = `${baseURL}/ffmpeg-core.wasm`;
-        
-        console.log('🔍 FFmpeg URLs:');
-        console.log(`  ✅ Core: ${coreURL}`);
-        console.log(`  ✅ WASM: ${wasmURL}`);
-      } else {
-        throw new Error('Window object قابل دسترسی نیست');
-      }
-      
-      console.log('🚀 بارگذاری FFmpeg...');
-      
-      await ffmpeg.load({
-        coreURL,
-        wasmURL,
-      });
-      console.log('✅ FFmpeg بارگذاری شد');
+      console.log('🎬 شروع ساخت ویدیو از طریق بک‌اند...');
 
       const activePhotoUri = (photos[activePhotoIndex] ?? photos[0]).uri;
       const selectedTemplate = REEL_TEMPLATES.find((template) => template.id === selectedTemplateId) ?? REEL_TEMPLATES[0];
-      const inputName = 'template-frame.png';
-      const outputName = 'output.mp4';
       const clockParts = getClockParts(startedAt ?? new Date());
-      const timeLabel = liveTime || new Date().toLocaleString('fa-IR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
-
-      let frameBlob: Blob | null = null;
       const selectedFormatObj = VIDEO_FORMATS.find((f) => f.id === selectedFormat) ?? VIDEO_FORMATS[0];
       const canvasWidth = selectedFormatObj.width;
       const canvasHeight = selectedFormatObj.height;
 
+      let frameBlob: Blob | null = null;
       if (typeof window !== 'undefined') {
         const canvas = document.createElement('canvas');
         canvas.width = canvasWidth;
@@ -657,67 +615,6 @@ export function ReelStudioScreen() {
         }
       }
 
-      console.log('🎨 ساخت Canvas فریم...');
-      if (!frameBlob) {
-        console.log('📷 بارگذاری عکس');
-        const imageData = await fetchFile(activePhotoUri);
-        await ffmpeg.writeFile(inputName, imageData);
-      } else {
-        console.log('🖼️ استفاده از Canvas renderشده');
-        const frameArrayBuffer = await frameBlob.arrayBuffer();
-        await ffmpeg.writeFile(inputName, new Uint8Array(frameArrayBuffer));
-      }
-      console.log('✅ فریم آماده شد');
-
-      const args = [
-        '-loop',
-        '1',
-        '-i',
-        inputName,
-        '-t',
-        `${duration}`,
-        '-vf',
-        `scale=${canvasWidth}:${canvasHeight}:force_original_aspect_ratio=decrease,pad=${canvasWidth}:${canvasHeight}:(ow-iw)/2:(oh-ih)/2`,
-        '-c:v',
-        'libx264',
-        '-pix_fmt',
-        'yuv420p',
-        outputName,
-      ];
-
-      console.log('🎵 بررسی موسیقی...');
-      if (soundtrackUri.trim()) {
-        try {
-          const audioName = 'audio.mp3';
-          console.log('📥 بارگذاری فایل صوتی');
-          const audioData = await fetchFile(soundtrackUri.trim());
-          await ffmpeg.writeFile(audioName, audioData);
-          args.splice(args.length - 1, 0, '-i', audioName, '-c:a', 'aac', '-shortest');
-          console.log('✅ صوت اضافه شد');
-        } catch (audioError) {
-          console.warn('⚠️ خطا در اضافه کردن صوت (بدون صوت ادامه):', audioError);
-        }
-      } else {
-        console.log('⏭️ صوتی انتخاب نشده');
-      }
-
-      console.log('⚙️ شروع FFmpeg...');
-      console.log('📋 دستورات:', args);
-      await ffmpeg.exec(args);
-      console.log('✅ FFmpeg تکمیل شد');
-
-      console.log('📤 خوانندن فایل خروجی');
-      const data = await ffmpeg.readFile(outputName);
-      const outputBytes = data instanceof Uint8Array ? data : new Uint8Array(data as unknown as ArrayBufferLike);
-      const outputBuffer = new ArrayBuffer(outputBytes.byteLength);
-      const outputView = new Uint8Array(outputBuffer);
-      outputView.set(outputBytes);
-      const blob = new Blob([outputBuffer], { type: 'video/mp4' });
-      const url = URL.createObjectURL(blob);
-      console.log(`✅ ویدیو ساخته شد: ${blob.size} bytes`);
-      
-      setExportUrl(url);
-
       const toBase64 = async (blobItem: Blob): Promise<string> => {
         return new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -734,15 +631,41 @@ export function ReelStudioScreen() {
         });
       };
 
+      const frameBlobToSend = frameBlob ?? (await (await fetch(activePhotoUri)).blob());
+      const imageBase64 = await toBase64(frameBlobToSend);
+      const backendUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${backendUrl}/api/generate-video`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageBase64,
+          duration,
+          width: canvasWidth,
+          height: canvasHeight,
+          soundtrackUri: soundtrackUri.trim() || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Backend video generation failed');
+      }
+
+      const data = await response.json();
+      const videoBlob = await (await fetch(`data:video/mp4;base64,${data.videoBase64}`)).blob();
+      const url = URL.createObjectURL(videoBlob);
+      setExportUrl(url);
+
       console.log('💾 تبدیل به Base64 و ذخیره');
-      const videoBase64 = await toBase64(blob);
       const thumbnailUri = activePhotoUri || createTemplatePreviewUri(selectedTemplate);
       await addVideo({
         title: `Reel ${new Date().toLocaleString('fa-IR', { year: 'numeric', month: '2-digit', day: '2-digit' })}`,
         fileName: `reel-${Date.now()}.mp4`,
         duration,
         thumbnailUri,
-        contentBase64: videoBase64,
+        contentBase64: data.videoBase64,
         templateId: selectedTemplate.id,
       });
       console.log('✅ ویدیو ذخیره شد');
@@ -758,16 +681,16 @@ export function ReelStudioScreen() {
       NativeAlert.alert('✅ موفق!', 'فایل ریلز ساخته شد و برای دانلود آماده است.');
     } catch (error) {
       console.error('❌ exportVideo error:', error);
-      
+
       let errorMessage = 'خطای نامشخص رخ داد';
       if (error instanceof Error) {
         errorMessage = error.message;
         console.error('📋 جزئیات خطا:', error.stack);
       }
-      
+
       NativeAlert.alert(
         '❌ خطا در ساخت ویدیو',
-        `مشکل: ${errorMessage}\n\n💡 نکات:\n• FFmpeg فایل‌ها پیدا شدند؟\n• عکس پیدا است؟\n• DevTools رو بازکن (F12) برای دیدن logs`
+        `مشکل: ${errorMessage}\n\n💡 نکات:\n• بک‌اند در دسترس است؟\n• عکس پیدا است؟\n• DevTools رو باز کن (F12) برای دیدن logs`
       );
     } finally {
       setIsExporting(false);

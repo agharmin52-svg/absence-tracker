@@ -1,5 +1,7 @@
 FROM node:20-alpine as builder
 
+RUN apk add --no-cache ffmpeg
+
 WORKDIR /usr/src/app
 
 # Copy package files
@@ -18,6 +20,8 @@ RUN npm run build
 
 # Production stage
 FROM node:20-alpine
+
+RUN apk add --no-cache ffmpeg
 
 WORKDIR /usr/src/app
 

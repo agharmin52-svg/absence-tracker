@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { initDatabase, checkDatabaseConnection, closePool } from './db.js';
 import { videoRouter } from './routes/videos.js';
 import { journalRouter } from './routes/journal.js';
+import { generateVideoRouter } from './routes/generateVideo.js';
 
 dotenv.config();
 
@@ -12,7 +13,7 @@ const app = express();
 const port = Number(process.env.PORT || 4000);
 
 app.use(cors());
-app.use(json({ limit: '20mb' }));
+app.use(json({ limit: '50mb' }));
 
 // Health check endpoint
 app.get('/health', async (_req, res) => {
@@ -26,6 +27,8 @@ app.get('/health', async (_req, res) => {
 // API Routes
 app.use('/api/videos', videoRouter);
 app.use('/api/journal', journalRouter);
+app.use('/generate-video', generateVideoRouter);
+app.use('/api/generate-video', generateVideoRouter);
 
 // خطای 404
 app.use((_req, res) => {
