@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { fetchFile } from '@ffmpeg/util';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
@@ -423,80 +423,24 @@ export function ReelStudioScreen() {
       const ffmpeg = new FFmpeg();
       ffmpegRef.current = ffmpeg;
       
-      // تحديد المسار الصحيح لملفات FFmpeg
+      // ✅ استفاده مستقیم از origin برای FFmpeg (بدون toBlobURL)
       let coreURL: string;
       let wasmURL: string;
       
       if (typeof window !== 'undefined') {
-        try {
-          console.log('🔍 جستجو برای فایل‌های FFmpeg...');
-          // محاولة استخدام المسارات المختلفة
-          const publicPaths = [
-            '/public/ffmpeg-core.js',
-            '/ffmpeg-core.js',
-            'public/ffmpeg-core.js',
-            'ffmpeg-core.js',
-          ];
-          
-          let foundPath: string | null = null;
-          for (const path of publicPaths) {
-            try {
-              console.log(`  ↳ بررسی: ${path}`);
-              const response = await fetch(path, { method: 'HEAD' });
-              if (response.ok) {
-                foundPath = path.startsWith('/public/') ? path.substring(7) : path;
-                console.log(`✅ پیدا شد: ${foundPath}`);
-                break;
-              }
-            } catch (e) {
-              console.log(`  ✗ دسترسی ندارد: ${path}`);
-            }
-          }
-          
-          if (!foundPath) {
-            foundPath = '/ffmpeg-core.js';
-            console.log('⚠️ از مسیر پیش‌فرض استفاده می‌شود');
-          }
-          
-          // ✅ استفاده از origin برای ساخت URL کامل
-          const baseURL = window.location.origin;
-          // تصحیح: اگر foundPath `/ffmpeg-core.js` است، directory برابر `/` است
-          const ffmpegDir = foundPath.startsWith('/') ? '/' : '';
-          console.log(`📦 مسیر پایه: ${ffmpegDir}`);
-          
-          // ✅ URL کامل برای toBlobURL (FFmpeg 0.12.x API)
-          const coreFile = `${baseURL}${ffmpegDir}ffmpeg-core.js`;
-          const wasmFile = `${baseURL}${ffmpegDir}ffmpeg-core.wasm`;
-          
-          console.log(`📥 Core: ${coreFile}`);
-          console.log(`📥 WASM: ${wasmFile}`);
-          
-          coreURL = await toBlobURL(coreFile, 'text/javascript');
-          wasmURL = await toBlobURL(wasmFile, 'application/wasm');
-          
-          console.log('✅ تمام URL‌های FFmpeg آماده شدند');
-        } catch (pathError) {
-          console.warn('⚠️ خطای شناسایی مسیر FFmpeg:', pathError);
-          console.log('📥 استفاده از مسیرهای پیش‌فرض...');
-          try {
-            const baseURL = window.location.origin;
-            coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
-            wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
-          } catch (defaultError) {
-            console.error('❌ خطا در بارگذاری FFmpeg:', defaultError);
-            NativeAlert.alert(
-              'خطای FFmpeg',
-              'فایل‌های FFmpeg پیدا نشدند. مطمئن شو فایل‌ها در public/ موجود هستند.'
-            );
-            return;
-          }
-        }
+        const baseURL = window.location.origin;
+        
+        coreURL = `${baseURL}/ffmpeg-core.js`;
+        wasmURL = `${baseURL}/ffmpeg-core.wasm`;
+        
+        console.log('🔍 FFmpeg URLs:');
+        console.log(`  ✅ Core: ${coreURL}`);
+        console.log(`  ✅ WASM: ${wasmURL}`);
       } else {
         throw new Error('Window object قابل دسترسی نیست');
       }
       
       console.log('🚀 بارگذاری FFmpeg...');
-      console.log('📋 URLs:', { coreURL: coreURL?.substring(0, 50) + '...', wasmURL: wasmURL?.substring(0, 50) + '...' });
       
       await ffmpeg.load({
         coreURL,
