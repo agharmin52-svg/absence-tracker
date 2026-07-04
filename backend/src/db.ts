@@ -1,17 +1,16 @@
-import { Pool, QueryResult } from 'pg';
+import { Pool } from 'pg';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // ESM compatibility: تعریف __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error('DATABASE_URL is required');
-}
+const connectionString = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/absence_tracker';
 
 export const pool = new Pool({ connectionString });
 
