@@ -420,9 +420,50 @@ export function ReelStudioScreen() {
       setExportUrl('');
       const ffmpeg = new FFmpeg();
       ffmpegRef.current = ffmpeg;
-      const baseUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
-      const coreURL = await toBlobURL(`${baseUrl}ffmpeg-core.js`, 'text/javascript');
-      const wasmURL = await toBlobURL(`${baseUrl}ffmpeg-core.wasm`, 'application/wasm');
+      
+      // تحديد المسار الصحيح لملفات FFmpeg
+      let coreURL: string;
+      let wasmURL: string;
+      
+      if (typeof window !== 'undefined') {
+        try {
+          // محاولة استخدام المسارات المختلفة
+          const publicPaths = [
+            '/public/ffmpeg-core.js',
+            '/ffmpeg-core.js',
+            'public/ffmpeg-core.js',
+            'ffmpeg-core.js',
+          ];
+          
+          let foundPath: string | null = null;
+          for (const path of publicPaths) {
+            try {
+              const response = await fetch(path, { method: 'HEAD' });
+              if (response.ok) {
+                foundPath = path.startsWith('/public/') ? path.substring(7) : path;
+                break;
+              }
+            } catch (e) {
+              // Continue to next path
+            }
+          }
+          
+          if (!foundPath) {
+            foundPath = '/ffmpeg-core.js';
+          }
+          
+          const basePath = foundPath.substring(0, foundPath.lastIndexOf('/') + 1);
+          coreURL = await toBlobURL(basePath + 'ffmpeg-core.js', 'text/javascript');
+          wasmURL = await toBlobURL(basePath + 'ffmpeg-core.wasm', 'application/wasm');
+        } catch (pathError) {
+          console.warn('FFmpeg path detection failed, using default paths:', pathError);
+          coreURL = await toBlobURL('/ffmpeg-core.js', 'text/javascript');
+          wasmURL = await toBlobURL('/ffmpeg-core.wasm', 'application/wasm');
+        }
+      } else {
+        throw new Error('Window object is not available');
+      }
+      
       await ffmpeg.load({
         coreURL,
         wasmURL,
