@@ -418,6 +418,8 @@ export function ReelStudioScreen() {
     try {
       setIsExporting(true);
       setExportUrl('');
+      console.log('🎬 شروع ساخت ویدیو...');
+      
       const ffmpeg = new FFmpeg();
       ffmpegRef.current = ffmpeg;
       
@@ -427,6 +429,7 @@ export function ReelStudioScreen() {
       
       if (typeof window !== 'undefined') {
         try {
+          console.log('🔍 جستجو برای فایل‌های FFmpeg...');
           // محاولة استخدام المسارات المختلفة
           const publicPaths = [
             '/public/ffmpeg-core.js',
@@ -438,36 +441,54 @@ export function ReelStudioScreen() {
           let foundPath: string | null = null;
           for (const path of publicPaths) {
             try {
+              console.log(`  ↳ بررسی: ${path}`);
               const response = await fetch(path, { method: 'HEAD' });
               if (response.ok) {
                 foundPath = path.startsWith('/public/') ? path.substring(7) : path;
+                console.log(`✅ پیدا شد: ${foundPath}`);
                 break;
               }
             } catch (e) {
-              // Continue to next path
+              console.log(`  ✗ دسترسی ندارد: ${path}`);
             }
           }
           
           if (!foundPath) {
             foundPath = '/ffmpeg-core.js';
+            console.log('⚠️ از مسیر پیش‌فرض استفاده می‌شود');
           }
           
           const basePath = foundPath.substring(0, foundPath.lastIndexOf('/') + 1);
+          console.log(`📦 مسیر پایه: ${basePath}`);
+          
           coreURL = await toBlobURL(basePath + 'ffmpeg-core.js', 'text/javascript');
           wasmURL = await toBlobURL(basePath + 'ffmpeg-core.wasm', 'application/wasm');
+          console.log('✅ URL‌های FFmpeg آماده شدند');
         } catch (pathError) {
-          console.warn('FFmpeg path detection failed, using default paths:', pathError);
-          coreURL = await toBlobURL('/ffmpeg-core.js', 'text/javascript');
-          wasmURL = await toBlobURL('/ffmpeg-core.wasm', 'application/wasm');
+          console.warn('⚠️ خطای شناسایی مسیر FFmpeg:', pathError);
+          console.log('📥 استفاده از مسیرهای پیش‌فرض...');
+          try {
+            coreURL = await toBlobURL('/ffmpeg-core.js', 'text/javascript');
+            wasmURL = await toBlobURL('/ffmpeg-core.wasm', 'application/wasm');
+          } catch (defaultError) {
+            console.error('❌ خطا در بارگذاری FFmpeg:', defaultError);
+            NativeAlert.alert(
+              'خطای FFmpeg',
+              'فایل‌های FFmpeg پیدا نشدند. مطمئن شو فایل‌ها در public/ موجود هستند.'
+            );
+            return;
+          }
         }
       } else {
-        throw new Error('Window object is not available');
+        throw new Error('Window object قابل دسترسی نیست');
       }
       
+      console.log('🚀 بارگذاری FFmpeg...');
       await ffmpeg.load({
         coreURL,
         wasmURL,
       });
+      console.log('✅ FFmpeg بارگذاری شد');
 
       const activePhotoUri = (photos[activePhotoIndex] ?? photos[0]).uri;
       const selectedTemplate = REEL_TEMPLATES.find((template) => template.id === selectedTemplateId) ?? REEL_TEMPLATES[0];
@@ -678,13 +699,17 @@ export function ReelStudioScreen() {
         }
       }
 
+      console.log('🎨 ساخت Canvas فریم...');
       if (!frameBlob) {
+        console.log('📷 بارگذاری عکس');
         const imageData = await fetchFile(activePhotoUri);
         await ffmpeg.writeFile(inputName, imageData);
       } else {
+        console.log('🖼️ استفاده از Canvas renderشده');
         const frameArrayBuffer = await frameBlob.arrayBuffer();
         await ffmpeg.writeFile(inputName, new Uint8Array(frameArrayBuffer));
       }
+      console.log('✅ فریم آماده شد');
 
       const args = [
         '-loop',
@@ -702,18 +727,28 @@ export function ReelStudioScreen() {
         outputName,
       ];
 
+      console.log('🎵 بررسی موسیقی...');
       if (soundtrackUri.trim()) {
         try {
           const audioName = 'audio.mp3';
+          console.log('📥 بارگذاری فایل صوتی');
           const audioData = await fetchFile(soundtrackUri.trim());
           await ffmpeg.writeFile(audioName, audioData);
           args.splice(args.length - 1, 0, '-i', audioName, '-c:a', 'aac', '-shortest');
+          console.log('✅ صوت اضافه شد');
         } catch (audioError) {
-          console.warn('audio mux warning', audioError);
+          console.warn('⚠️ خطا در اضافه کردن صوت (بدون صوت ادامه):', audioError);
         }
+      } else {
+        console.log('⏭️ صوتی انتخاب نشده');
       }
 
+      console.log('⚙️ شروع FFmpeg...');
+      console.log('📋 دستورات:', args);
       await ffmpeg.exec(args);
+      console.log('✅ FFmpeg تکمیل شد');
+
+      console.log('📤 خوانندن فایل خروجی');
       const data = await ffmpeg.readFile(outputName);
       const outputBytes = data instanceof Uint8Array ? data : new Uint8Array(data as unknown as ArrayBufferLike);
       const outputBuffer = new ArrayBuffer(outputBytes.byteLength);
@@ -721,6 +756,8 @@ export function ReelStudioScreen() {
       outputView.set(outputBytes);
       const blob = new Blob([outputBuffer], { type: 'video/mp4' });
       const url = URL.createObjectURL(blob);
+      console.log(`✅ ویدیو ساخته شد: ${blob.size} bytes`);
+      
       setExportUrl(url);
 
       const toBase64 = async (blobItem: Blob): Promise<string> => {
@@ -739,6 +776,7 @@ export function ReelStudioScreen() {
         });
       };
 
+      console.log('💾 تبدیل به Base64 و ذخیره');
       const videoBase64 = await toBase64(blob);
       const thumbnailUri = activePhotoUri || createTemplatePreviewUri(selectedTemplate);
       await addVideo({
@@ -749,17 +787,30 @@ export function ReelStudioScreen() {
         contentBase64: videoBase64,
         templateId: selectedTemplate.id,
       });
+      console.log('✅ ویدیو ذخیره شد');
 
       if (typeof window !== 'undefined') {
+        console.log('📥 شروع دانلود');
         const link = document.createElement('a');
         link.href = url;
         link.download = `reel-${Date.now()}.mp4`;
         link.click();
       }
-      NativeAlert.alert('انجام شد', 'فایل ریلز ساخته شد و برای دانلود آماده است.');
+      console.log('🎉 موفق!');
+      NativeAlert.alert('✅ موفق!', 'فایل ریلز ساخته شد و برای دانلود آماده است.');
     } catch (error) {
-      console.error('exportVideo error', error);
-      NativeAlert.alert('خطا', 'ساخت MP4 با خطا روبه‌رو شد.');
+      console.error('❌ exportVideo error:', error);
+      
+      let errorMessage = 'خطای نامشخص رخ داد';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        console.error('📋 جزئیات خطا:', error.stack);
+      }
+      
+      NativeAlert.alert(
+        '❌ خطا در ساخت ویدیو',
+        `مشکل: ${errorMessage}\n\n💡 نکات:\n• FFmpeg فایل‌ها پیدا شدند؟\n• عکس پیدا است؟\n• DevTools رو بازکن (F12) برای دیدن logs`
+      );
     } finally {
       setIsExporting(false);
     }
