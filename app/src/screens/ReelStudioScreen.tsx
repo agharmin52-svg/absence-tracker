@@ -41,6 +41,21 @@ type ReelTemplate = {
   style: 'khatereh' | 'daftarcheh' | 'ghamgin' | 'masire-tanhaei' | 'neon-ember' | 'neon-rain' | 'neon-drift';
 };
 
+type VideoFormat = {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  aspectRatio: string;
+};
+
+const VIDEO_FORMATS: VideoFormat[] = [
+  { id: 'story', name: 'Story', width: 1080, height: 1920, aspectRatio: '9:16' },
+  { id: 'reels', name: 'Reels', width: 1080, height: 1920, aspectRatio: '9:16' },
+  { id: 'post', name: 'Post', width: 1080, height: 1080, aspectRatio: '1:1' },
+  { id: 'youtube-short', name: 'YouTube Short', width: 1080, height: 1920, aspectRatio: '9:16' },
+];
+
 const createTemplatePreviewUri = (template: ReelTemplate) => {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="240" height="360" viewBox="0 0 240 360">
@@ -172,6 +187,7 @@ export function ReelStudioScreen() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportUrl, setExportUrl] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState(REEL_TEMPLATES[0].id);
+  const [selectedFormat, setSelectedFormat] = useState(VIDEO_FORMATS[0].id);
   const [startedAt, setStartedAt] = useState<Date | null>(null);
   const [isSavingReel, setIsSavingReel] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -427,13 +443,17 @@ export function ReelStudioScreen() {
       });
 
       let frameBlob: Blob | null = null;
+      const selectedFormatObj = VIDEO_FORMATS.find((f) => f.id === selectedFormat) ?? VIDEO_FORMATS[0];
+      const canvasWidth = selectedFormatObj.width;
+      const canvasHeight = selectedFormatObj.height;
+
       if (typeof window !== 'undefined') {
         const canvas = document.createElement('canvas');
-        canvas.width = 1080;
-        canvas.height = 1920;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
         const context = canvas.getContext('2d');
         if (context) {
-          const gradient = context.createLinearGradient(0, 0, 0, 1920);
+          const gradient = context.createLinearGradient(0, 0, 0, canvasHeight);
           gradient.addColorStop(0, selectedTemplate.colors[0]);
           gradient.addColorStop(1, selectedTemplate.colors[1]);
           context.fillStyle = gradient;
@@ -633,7 +653,7 @@ export function ReelStudioScreen() {
         '-t',
         `${duration}`,
         '-vf',
-        'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2',
+        `scale=${canvasWidth}:${canvasHeight}:force_original_aspect_ratio=decrease,pad=${canvasWidth}:${canvasHeight}:(ow-iw)/2:(oh-ih)/2`,
         '-c:v',
         'libx264',
         '-pix_fmt',
@@ -780,6 +800,31 @@ export function ReelStudioScreen() {
               );
             })}
           </ScrollView>
+
+          <Text style={styles.sectionTitle}>فرمت خروجی</Text>
+          <View style={styles.formatGrid}>
+            {VIDEO_FORMATS.map((format) => (
+              <Pressable
+                key={format.id}
+                onPress={() => setSelectedFormat(format.id)}
+                style={[styles.formatCard, selectedFormat === format.id && styles.formatCardActive]}
+              >
+                <View
+                  style={[
+                    styles.formatPreview,
+                    {
+                      aspectRatio: format.width / format.height,
+                      backgroundColor: selectedFormat === format.id ? 'rgba(94, 234, 212, 0.2)' : 'rgba(255,255,255,0.06)',
+                    },
+                  ]}
+                >
+                  <Text style={styles.formatDimension}>{format.width}×{format.height}</Text>
+                </View>
+                <Text style={styles.formatName}>{format.name}</Text>
+                <Text style={styles.formatRatio}>{format.aspectRatio}</Text>
+              </Pressable>
+            ))}
+          </View>
 
           <Text style={styles.sectionTitle}>تصاویر</Text>
           <View style={styles.inlineButtons}>
@@ -987,15 +1032,49 @@ export function ReelStudioScreen() {
               style={{
                 padding: spacing.md,
                 borderRadius: radius.md,
-                backgroundColor: 'rgba(255,255,255,0.05)',
+                backgroundColor: 'rgba(94, 234, 212, 0.08)',
                 borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.12)',
+                borderColor: 'rgba(94, 234, 212, 0.24)',
               }}
             >
-              <Text style={{ color: colors.textPrimary, fontSize: typography.body, fontWeight: '700', marginBottom: spacing.sm }}>
-                فایل آماده دانلود
-              </Text>
-              <Button title="دانلود ویدیو MP4" onPress={() => typeof window !== 'undefined' && window.open(exportUrl, '_blank')} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.accent, fontSize: typography.caption, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>
+                    آماده برای دانلود ✓
+                  </Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: typography.body, fontWeight: '700' }}>
+                    {VIDEO_FORMATS.find((f) => f.id === selectedFormat)?.name} ویدیو
+                  </Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: typography.caption, marginTop: 2 }}>
+                    {VIDEO_FORMATS.find((f) => f.id === selectedFormat)?.width}×{VIDEO_FORMATS.find((f) => f.id === selectedFormat)?.height}px
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    title="دانلود"
+                    onPress={() => {
+                      if (typeof window !== 'undefined') {
+                        const link = document.createElement('a');
+                        link.href = exportUrl;
+                        link.download = `reel-${selectedFormat}-${Date.now()}.mp4`;
+                        link.click();
+                      }
+                    }}
+                    variant="secondary"
+                    size="sm"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    title="باز کردن"
+                    onPress={() => typeof window !== 'undefined' && window.open(exportUrl, '_blank')}
+                    variant="ghost"
+                    size="sm"
+                  />
+                </View>
+              </View>
             </View>
           ) : null}
         </Card>
@@ -1434,5 +1513,49 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.82)',
     fontSize: 12,
     fontWeight: '600',
+  },
+  formatGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  formatCard: {
+    flex: 1,
+    minWidth: '48%',
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+  },
+  formatCardActive: {
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(94, 234, 212, 0.16)',
+  },
+  formatPreview: {
+    width: '100%',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    marginBottom: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  formatDimension: {
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  formatName: {
+    color: colors.textPrimary,
+    fontSize: typography.caption,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  formatRatio: {
+    color: colors.textSecondary,
+    fontSize: 10,
   },
 });
