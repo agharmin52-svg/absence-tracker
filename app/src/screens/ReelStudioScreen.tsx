@@ -460,19 +460,21 @@ export function ReelStudioScreen() {
           
           // ✅ استفاده از origin برای ساخت URL کامل
           const baseURL = window.location.origin;
-          const ffmpegPath = foundPath.substring(0, foundPath.lastIndexOf('/'));
-          console.log(`📦 مسیر پایه: ${ffmpegPath}`);
+          // تصحیح: اگر foundPath `/ffmpeg-core.js` است، directory برابر `/` است
+          const ffmpegDir = foundPath.startsWith('/') ? '/' : '';
+          console.log(`📦 مسیر پایه: ${ffmpegDir}`);
           
-          // ✅ URL کامل برای toBlobURL
-          const coreFile = `${baseURL}${ffmpegPath}/ffmpeg-core.js`;
-          const wasmFile = `${baseURL}${ffmpegPath}/ffmpeg-core.wasm`;
-          const workerFile = `${baseURL}${ffmpegPath}/ffmpeg-core.worker.js`;
+          // ✅ URL کامل برای toBlobURL (FFmpeg 0.12.x API)
+          const coreFile = `${baseURL}${ffmpegDir}ffmpeg-core.js`;
+          const wasmFile = `${baseURL}${ffmpegDir}ffmpeg-core.wasm`;
           
-          console.log(`📥 بارگذاری از: ${coreFile}`);
+          console.log(`📥 Core: ${coreFile}`);
+          console.log(`📥 WASM: ${wasmFile}`);
           
           coreURL = await toBlobURL(coreFile, 'text/javascript');
           wasmURL = await toBlobURL(wasmFile, 'application/wasm');
-          console.log('✅ URL‌های FFmpeg آماده شدند');
+          
+          console.log('✅ تمام URL‌های FFmpeg آماده شدند');
         } catch (pathError) {
           console.warn('⚠️ خطای شناسایی مسیر FFmpeg:', pathError);
           console.log('📥 استفاده از مسیرهای پیش‌فرض...');
@@ -494,6 +496,8 @@ export function ReelStudioScreen() {
       }
       
       console.log('🚀 بارگذاری FFmpeg...');
+      console.log('📋 URLs:', { coreURL: coreURL?.substring(0, 50) + '...', wasmURL: wasmURL?.substring(0, 50) + '...' });
+      
       await ffmpeg.load({
         coreURL,
         wasmURL,
